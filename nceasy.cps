@@ -49,7 +49,7 @@ properties = {
   optionalStop: true, // optional stop
   separateWordsWithSpace: true, // specifies that the words should be separated with a white space
   homingZ: 30, // specify the z homing position
-  useFilesForSubprograms: true // specifies that one file should be generated to section
+  makeSubprograms: true // specifies that one file should be generated for each section
 };
 
 // user-defined property definitions
@@ -63,7 +63,7 @@ propertyDefinitions = {
   optionalStop: {title:"Optional stop", description:"Outputs optional stop code during when necessary in the code.", type:"boolean"},
   separateWordsWithSpace: {title:"Separate words with space", description:"Adds spaces between words if 'yes' is selected.", type:"boolean"},
   homingZ: {title:"Homing Z", description: "Z position for homing in workspice coordinates, specified in NC EAS(Y).", type: "integer"},
-  useFilesForSubprograms: {title:"Use files for subprograms", description:"Specifies that one file should be generated for each section.", type:"boolean"}
+  makeSubprograms: {title:"Use separate files for each section", description:"Specifies that one file should be generated for each section.", type:"boolean"}
 };
 
 var numberOfToolSlots = 9999;
@@ -314,23 +314,25 @@ function onOpen() {
       }
     }
   }
-  
-  // absolute coordinates and feed per min
-  writeBlock(gAbsIncModal.format(90), gFeedModeModal.format(94));
-  writeBlock(gPlaneModal.format(17));
-  writeBlock(gUnitModal.format(71));
-  writeComment("Set initial feed rate to 50 mm/min ");
-  writeBlock(gMotionModal.format(1), feedOutput.format(50));														
 
-  switch (unit) {
-  case IN:
-    writeBlock(gUnitModal.format(70));
-    break;
-  case MM:
+  if (properties.makeSubprograms == false) {
+    // absolute coordinates and feed per min
+    writeBlock(gAbsIncModal.format(90), gFeedModeModal.format(94));
+    writeBlock(gPlaneModal.format(17));
     writeBlock(gUnitModal.format(71));
-    break;
+    writeComment("Set initial feed rate to 50 mm/min ");
+    writeBlock(gMotionModal.format(1), feedOutput.format(50));
+
+    switch (unit) {
+      case IN:
+        writeBlock(gUnitModal.format(70));
+        break;
+      case MM:
+        writeBlock(gUnitModal.format(71));
+        break;
+    }
   }
-  
+
 }
 
 function onComment(message) {
@@ -451,61 +453,61 @@ function onSection() {
   var insertToolCall = isFirstSection() ||
     currentSection.getForceToolChange && currentSection.getForceToolChange() ||
     (tool.number != getPreviousSection().getTool().number);
-
-  //////////////////////////////////////////////////////
   
-  var programId;
-  try {
-    programId = getAsInt(programName);
-  } catch (e) {
-    error(localize("Program name must be a number."));
-    return;
-  }
+  if (properties.makeSubprograms) {
+    var programId;
+    try {
+      programId = getAsInt(programName);
+    } catch (e) {
+      error(localize("Program name must be a number."));
+      return;
+    }
 
-  var subprogram = programId + 1 + getCurrentSectionId();
-  var oFormat = createFormat({ width: (properties.o8 ? 8 : 4), zeropad: true, decimals: 0 });
-  writeBlock(mFormat.format(98), "P" + oFormat.format(subprogram)); // call subprogram
+    var subprogram = programId + 1 + getCurrentSectionId();
+    var oFormat = createFormat({ width: (properties.o8 ? 8 : 4), zeropad: true, decimals: 0 });
+    writeBlock(mFormat.format(98), "P" + oFormat.format(subprogram)); // call subprogram
 
-  previousSequenceNumber = sequenceNumber;
-  sequenceNumber = properties.sequenceNumberStart;
-  if (properties.useFilesForSubprograms) {
+    previousSequenceNumber = sequenceNumber;
+    sequenceNumber = properties.sequenceNumberStart;
+
     var path = FileSystem.getCombinedPath(FileSystem.getFolderPath(getOutputPath()), subprogram + "." + extension);
     redirectToFile(path);
     writeln("%");
+
+    var oFormat = createFormat({ width: (properties.o8 ? 8 : 4), zeropad: true, decimals: 0 });
+    writeln("O" + oFormat.format(subprogram));
+
+
+    writeHeader();
+
+    writeBlock(gAbsIncModal.format(90));
+    writeBlock(gFormat.format(53), gFormat.format(0), "Z" + xyzFormat.format(properties.homingZ)); // retract
+    writeBlock(gFormat.format(60));
+
   } else {
-    redirectToBuffer();
-    writeln(""); // separate subprograms
-  }
 
-  var oFormat = createFormat({ width: (properties.o8 ? 8 : 4), zeropad: true, decimals: 0 });
-  writeln("O" + oFormat.format(subprogram));
+    var retracted = false; // specifies that the tool has been retracted to the safe plane
+    var newWorkOffset = isFirstSection() ||
+      (getPreviousSection().workOffset != currentSection.workOffset); // work offset changes
+    var newWorkPlane = isFirstSection() ||
+      !isSameDirection(getPreviousSection().getGlobalFinalToolAxis(), currentSection.getGlobalInitialToolAxis());
+    if (insertToolCall || newWorkOffset || newWorkPlane) {
 
+      // stop spindle before retract during tool change
+      if (insertToolCall && !isFirstSection()) {
+        onCommand(COMMAND_STOP_SPINDLE);
+      }
 
-  writeHeader();
-  ///////////////////////////////////////////////////////////////
+      // retract to safe plane
+      retracted = true;
 
-  var retracted = false; // specifies that the tool has been retracted to the safe plane
-  var newWorkOffset = isFirstSection() ||
-    (getPreviousSection().workOffset != currentSection.workOffset); // work offset changes
-  var newWorkPlane = isFirstSection() ||
-    !isSameDirection(getPreviousSection().getGlobalFinalToolAxis(), currentSection.getGlobalInitialToolAxis());
-  if (insertToolCall || newWorkOffset || newWorkPlane) {
-    
-    // stop spindle before retract during tool change
-    if (insertToolCall && !isFirstSection()) {
-      onCommand(COMMAND_STOP_SPINDLE);
+      writeBlock(gAbsIncModal.format(90));
+      writeBlock(gFormat.format(53), gFormat.format(0), "Z" + xyzFormat.format(properties.homingZ)); // retract
+      writeBlock(gFormat.format(60));
+
+      zOutput.reset();
     }
-
-    // retract to safe plane
-    retracted = true;
-    
-	writeBlock(gAbsIncModal.format(90));
-	writeBlock(gFormat.format(53), gFormat.format(0), "Z" + xyzFormat.format(properties.homingZ)); // retract
-	writeBlock(gFormat.format(60));																										 
-
-    zOutput.reset();
   }
-
   writeln("");
   
   if (hasParameter("operation-comment")) {
@@ -685,6 +687,7 @@ function onSection() {
       yOutput.format(initialPosition.y)
     );
   }
+
 }
 
 function onDwell(seconds) {
@@ -1027,7 +1030,7 @@ function onSectionEnd() {
     onCommand(COMMAND_BREAK_CONTROL);
   }
   if (isRedirecting()) {
-    writeBlock(mFormat.format(99)); // end subprogram
+    writeFooter();
     if (properties.useFilesForSubprograms) {
       writeln("%");
     }
@@ -1069,5 +1072,38 @@ function onClose() {
   onImpliedCommand(COMMAND_STOP_SPINDLE);
   writeBlock(mFormat.format(30)); // stop program, spindle stop, coolant off
   write(subprograms);
+  writeln("%");
+}
+
+function writeFooter() {
+  onCommand(COMMAND_COOLANT_OFF);
+
+  writeBlock(gAbsIncModal.format(90));
+  writeBlock(gFormat.format(53), gFormat.format(0), "Z" + xyzFormat.format(properties.homingZ)); // retract
+  writeBlock(gFormat.format(60));
+
+  zOutput.reset();
+
+  setWorkPlane(new Vector(0, 0, 0)); // reset working plane
+
+  if (!machineConfiguration.hasHomePositionX() && !machineConfiguration.hasHomePositionY()) {
+    writeBlock(gFormat.format(53), gFormat.format(0), "X" + xyzFormat.format(0), "Y" + xyzFormat.format(0)); // return to home
+	writeBlock(gFormat.format(60));							
+  } else {
+    var homeX;
+    if (machineConfiguration.hasHomePositionX()) {
+      homeX = "X" + xyzFormat.format(machineConfiguration.getHomePositionX());
+    }
+    var homeY;
+    if (machineConfiguration.hasHomePositionY()) {
+      homeY = "Y" + xyzFormat.format(machineConfiguration.getHomePositionY());
+    }
+    writeBlock(gFormat.format(53), gFormat.format(0), homeX, homeY);
+	writeBlock(gFormat.format(60));							
+  }
+
+  onImpliedCommand(COMMAND_END);
+  onImpliedCommand(COMMAND_STOP_SPINDLE);
+  writeBlock(mFormat.format(30)); // stop program, spindle stop, coolant off
   writeln("%");
 }
