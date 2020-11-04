@@ -48,7 +48,8 @@ properties = {
   sequenceNumberIncrement: 5, // increment for sequence numbers
   optionalStop: true, // optional stop
   separateWordsWithSpace: true, // specifies that the words should be separated with a white space
-  homingZ: 30 // specify the z homing position											   
+  homingZ: 30, // specify the z homing position
+  useFilesForSubprograms: true // specifies that one file should be generated to section
 };
 
 // user-defined property definitions
@@ -61,7 +62,8 @@ propertyDefinitions = {
   sequenceNumberIncrement: {title:"Sequence number increment", description:"The amount by which the sequence number is incremented by in each block.", group:1, type:"integer"},
   optionalStop: {title:"Optional stop", description:"Outputs optional stop code during when necessary in the code.", type:"boolean"},
   separateWordsWithSpace: {title:"Separate words with space", description:"Adds spaces between words if 'yes' is selected.", type:"boolean"},
-  homingZ: {title:"Homing Z", description: "Z position for homing in workspice coordinates, specified in NC EAS(Y).", type: "integer"}																																			 
+  homingZ: {title:"Homing Z", description: "Z position for homing in workspice coordinates, specified in NC EAS(Y).", type: "integer"},
+  useFilesForSubprograms: {title:"Use files for subprograms", description:"Specifies that one file should be generated for each section.", type:"boolean"}
 };
 
 var numberOfToolSlots = 9999;
@@ -115,6 +117,8 @@ var WARNING_WORK_OFFSET = 0;
 // collected state
 var sequenceNumber;
 var currentWorkOffset;
+var subprograms = "";
+var optionalSection = false;
 
 /**
   Writes the specified block.
@@ -136,6 +140,80 @@ function onPassThrough(text) {
   for (text in commands) {
     writeBlock(commands[text]);
   }
+}
+
+function writeHeader() {
+
+  // dump machine configuration
+  var vendor = machineConfiguration.getVendor();
+  var model = machineConfiguration.getModel();
+  var description = machineConfiguration.getDescription();
+
+  if (properties.writeMachine && (vendor || model || description)) {
+    writeComment(localize("Machine"));
+    if (vendor) {
+      writeComment("  " + localize("vendor") + ": " + vendor);
+    }
+    if (model) {
+      writeComment("  " + localize("model") + ": " + model);
+    }
+    if (description) {
+      writeComment("  " + localize("description") + ": "  + description);
+    }
+  }
+
+  // dump tool information
+  if (properties.writeTools) {
+    var zRanges = {};
+    if (is3D()) {
+      var numberOfSections = getNumberOfSections();
+      for (var i = 0; i < numberOfSections; ++i) {
+        var section = getSection(i);
+        var zRange = section.getGlobalZRange();
+        var tool = section.getTool();
+        if (zRanges[tool.number]) {
+          zRanges[tool.number].expandToRange(zRange);
+        } else {
+          zRanges[tool.number] = zRange;
+        }
+      }
+    }
+
+    var tools = getToolTable();
+    if (tools.getNumberOfTools() > 0) {
+      for (var i = 0; i < tools.getNumberOfTools(); ++i) {
+        var tool = tools.getTool(i);
+        var comment = "T" + toolFormat.format(tool.number) + " " +
+          "D=" + xyzFormat.format(tool.diameter) + " " +
+          localize("CR") + "=" + xyzFormat.format(tool.cornerRadius);
+        if ((tool.taperAngle > 0) && (tool.taperAngle < Math.PI)) {
+          comment += " " + localize("TAPER") + "=" + taperFormat.format(tool.taperAngle) + localize("deg");
+        }
+        if (zRanges[tool.number]) {
+          comment += " - " + localize("ZMIN") + "=" + xyzFormat.format(zRanges[tool.number].getMinimum());
+        }
+        comment += " - " + getToolTypeName(tool.type);
+        writeComment(comment);
+      }
+    }
+  }
+
+  // absolute coordinates and feed per min
+  writeBlock(gFormat.format(90), gFormat.format(94));
+  writeBlock(gFormat.format(17));
+  writeBlock(gFormat.format(71));
+  writeComment("Set initial feed rate to 50 mm/min ");
+  writeBlock(gFormat.format(1), feedOutput.format(50));														
+
+  switch (unit) {
+  case IN:
+    writeBlock(gUnitModal.format(70));
+    break;
+  case MM:
+    writeBlock(gUnitModal.format(71));
+    break;
+  }
+
 }
 
 function formatComment(text) {
@@ -236,7 +314,7 @@ function onOpen() {
       }
     }
   }
-
+  
   // absolute coordinates and feed per min
   writeBlock(gAbsIncModal.format(90), gFeedModeModal.format(94));
   writeBlock(gPlaneModal.format(17));
@@ -252,6 +330,7 @@ function onOpen() {
     writeBlock(gUnitModal.format(71));
     break;
   }
+  
 }
 
 function onComment(message) {
@@ -372,7 +451,39 @@ function onSection() {
   var insertToolCall = isFirstSection() ||
     currentSection.getForceToolChange && currentSection.getForceToolChange() ||
     (tool.number != getPreviousSection().getTool().number);
+
+  //////////////////////////////////////////////////////
   
+  var programId;
+  try {
+    programId = getAsInt(programName);
+  } catch (e) {
+    error(localize("Program name must be a number."));
+    return;
+  }
+
+  var subprogram = programId + 1 + getCurrentSectionId();
+  var oFormat = createFormat({ width: (properties.o8 ? 8 : 4), zeropad: true, decimals: 0 });
+  writeBlock(mFormat.format(98), "P" + oFormat.format(subprogram)); // call subprogram
+
+  previousSequenceNumber = sequenceNumber;
+  sequenceNumber = properties.sequenceNumberStart;
+  if (properties.useFilesForSubprograms) {
+    var path = FileSystem.getCombinedPath(FileSystem.getFolderPath(getOutputPath()), subprogram + "." + extension);
+    redirectToFile(path);
+    writeln("%");
+  } else {
+    redirectToBuffer();
+    writeln(""); // separate subprograms
+  }
+
+  var oFormat = createFormat({ width: (properties.o8 ? 8 : 4), zeropad: true, decimals: 0 });
+  writeln("O" + oFormat.format(subprogram));
+
+
+  writeHeader();
+  ///////////////////////////////////////////////////////////////
+
   var retracted = false; // specifies that the tool has been retracted to the safe plane
   var newWorkOffset = isFirstSection() ||
     (getPreviousSection().workOffset != currentSection.workOffset); // work offset changes
@@ -911,6 +1022,19 @@ function onCommand(command) {
 
 function onSectionEnd() {
   writeBlock(gPlaneModal.format(17));
+  if (((getCurrentSectionId() + 1) >= getNumberOfSections()) ||
+      (tool.number != getNextSection().getTool().number)) {
+    onCommand(COMMAND_BREAK_CONTROL);
+  }
+  if (isRedirecting()) {
+    writeBlock(mFormat.format(99)); // end subprogram
+    if (properties.useFilesForSubprograms) {
+      writeln("%");
+    }
+    subprograms += getRedirectionBuffer();
+    closeRedirection();
+    sequenceNumber = previousSequenceNumber;
+  }
   forceAny();
 }
 
@@ -944,5 +1068,6 @@ function onClose() {
   onImpliedCommand(COMMAND_END);
   onImpliedCommand(COMMAND_STOP_SPINDLE);
   writeBlock(mFormat.format(30)); // stop program, spindle stop, coolant off
+  write(subprograms);
   writeln("%");
 }
