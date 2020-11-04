@@ -128,6 +128,16 @@ function writeBlock() {
   }
 }
 
+//Manual Gcode passthrough
+function onPassThrough(text) {
+  var commands = String(text).split(",");
+  writeln("");
+  
+  for (text in commands) {
+    writeBlock(commands[text]);
+  }
+}
+
 function formatComment(text) {
   return "(" + String(text).replace(/[\(\)]/g, "") + ")";
 }
