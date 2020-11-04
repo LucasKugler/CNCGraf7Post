@@ -570,7 +570,8 @@ function onSection() {
   if (insertToolCall ||
       isFirstSection() ||
       (rpmFormat.areDifferent(tool.spindleRPM, sOutput.getCurrent())) ||
-      (tool.clockwise != getPreviousSection().getTool().clockwise)) {
+      (tool.clockwise != getPreviousSection().getTool().clockwise) ||
+      properties.makeSubprograms) {
     if (tool.spindleRPM < 1) {
       error(localize("Spindle speed out of range."));
       return;
