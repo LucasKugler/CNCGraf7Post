@@ -120,6 +120,7 @@ var WARNING_WORK_OFFSET = 0;
 var sequenceNumber;
 var currentWorkOffset;
 var subprograms = "";
+var fileId = 0;
 var optionalSection = false;
 
 /**
@@ -342,7 +343,7 @@ function onOpen() {
         break;
     }
   }
-
+  writeln("");
 }
 
 function onComment(message) {
@@ -469,18 +470,14 @@ function onSection() {
   var newFile = properties.makeSubprograms && insertToolCall;
 
   if (newFile) {
-    var programId;
-    try {
-      programId = getAsInt(programName);
-    } catch (e) {
-      error(localize("Program name must be a number."));
-      return;
-    }
-
-    var subprogram = programId + 1 + getCurrentSectionId();
-    var oFormat = createFormat({ width: (properties.o8 ? 8 : 4), zeropad: true, decimals: 0 });
-    writeBlock(mFormat.format(98), "P" + oFormat.format(subprogram)); // call subprogram
-
+  
+    var subprogram = programName + "_";
+    subprogram += fileId + "_";
+    subprogram += xyzFormat.format(tool.diameter) + "mm ";
+    subprogram += getToolTypeName(tool.type);
+    writeComment(subprogram);
+    
+    fileId += 1;
     previousSequenceNumber = sequenceNumber;
     sequenceNumber = properties.sequenceNumberStart;
 
@@ -489,8 +486,6 @@ function onSection() {
     redirectToFile(path);   //Text is output into the new file from this point
     writeln("%");
 
-    var oFormat = createFormat({ width: (properties.o8 ? 8 : 4), zeropad: true, decimals: 0 });   //no idea what this is for
-    //writeln("O" + oFormat.format(subprogram));
     writeComment(subprogram);
     writeln("");
 
