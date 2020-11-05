@@ -1,8 +1,7 @@
 ## CNCGraf7Post
-This repository is providing an CNCGraf / NC-EASY CAM post processor for Fusion 360.  
-It is based on the RS 274D post processor configuration from autodesk.
+This repository is providing an NC-EASY CAM post processor for Fusion 360, based on the work of Tim Schneider, with extended capabilities:
 
-The NC-EASY post processor gives 2 options to split the machie code into multiple files: either one file for each operation, or one file every time there is a tool change. This is meant to simplify exporting the code on machines where the tools have to be changed manually.
+The NC-EASY post processor gives 2 options to split the g-code into multiple files: either one file for each operation, or a new file every time there is a tool change. This is meant to simplify exporting the code on machines where the tools have to be changed manually.
 
 **This new functionnality has not been tested extensively yet. Use with caution, and check the code before running it on your machine!**
 
@@ -38,4 +37,4 @@ The NC-EASY post processor gives 2 options to split the machie code into multipl
 
 ## Disclaimer
 
-This software is provided **AS IS**, **always** *simluate the generated g-code prior use on a real mill!*  
+This software is provided **AS IS**, **always** simluate the generated g-code prior use on a real mill!  
