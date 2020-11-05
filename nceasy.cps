@@ -256,9 +256,19 @@ function onOpen() {
   sequenceNumber = properties.sequenceNumberStart;
   writeln("%");
 
-  if (programName) {
-    writeComment(programName);
+  if ((getNumberOfSections() > 0) && (getSection(0).workOffset == 0)) {
+    for (var i = 0; i < getNumberOfSections(); ++i) {
+      if (getSection(i).workOffset > 0) {
+        error(localize("Using multiple work offsets is not possible if the initial work offset is 0."));
+        return;
+      }
+    }
   }
+
+  var fileName = FileSystem.getFilename(getOutputPath());
+  programName = String(fileName).replace(".nc", "");
+  writeComment(programName);
+
   if (programComment) {
     writeComment(programComment);
   }
@@ -1095,6 +1105,12 @@ function onClose() {
   writeBlock(mFormat.format(30)); // stop program, spindle stop, coolant off
   write(subprograms);
   writeln("%");
+}
+
+function onTerminate() {
+  if (properties.makeSubprograms) {
+    FileSystem.remove(getOutputPath()); //Delete the unecessary main file
+  }
 }
 
 function writeFooter() {
