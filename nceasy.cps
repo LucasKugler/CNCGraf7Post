@@ -42,14 +42,15 @@ allowedCircularPlanes = (1 << PLANE_XY); // allow only XY plane and to be sure, 
 properties = {
   writeMachine: true, // write machine
   writeTools: true, // writes the tools
-  preloadTool: true, // preloads next tool on tool change if any
+  preloadTool: false, // preloads next tool on tool change if any
   showSequenceNumbers: false, // show sequence numbers
   sequenceNumberStart: 10, // first sequence number
   sequenceNumberIncrement: 5, // increment for sequence numbers
-  optionalStop: true, // optional stop
+  optionalStop: false, // optional stop
   separateWordsWithSpace: true, // specifies that the words should be separated with a white space
   homingZ: 30, // specify the z homing position
-  makeSubprograms: true // specifies that one file should be generated for each section
+  makeSubprograms: true, // specifies that one file should be generated for each section
+  groupByTool: true // A new file is generated at every tool change
 };
 
 // user-defined property definitions
@@ -63,7 +64,8 @@ propertyDefinitions = {
   optionalStop: {title:"Optional stop", description:"Outputs optional stop code during when necessary in the code.", type:"boolean"},
   separateWordsWithSpace: {title:"Separate words with space", description:"Adds spaces between words if 'yes' is selected.", type:"boolean"},
   homingZ: {title:"Homing Z", description: "Z position for homing in workspice coordinates, specified in NC EAS(Y).", type: "integer"},
-  makeSubprograms: {title:"Use separate files for each section", description:"Specifies that one file should be generated for each section.", type:"boolean"}
+  makeSubprograms: {title:"Use separate files for each section", description:"Specifies that one file should be generated for each section.", type:"boolean"},
+  groupByTool: {title:"New file when tool changes", description:"A new file is generated every time there is a tool change.", type:"boolean"}
 };
 
 var numberOfToolSlots = 9999;
@@ -198,12 +200,20 @@ function writeHeader() {
     }
   }
 
+  gMotionModal.reset();
+  gPlaneModal.reset();
+  gAbsIncModal.reset();
+  gFeedModeModal.reset();
+  gUnitModal.reset();
+  gCycleModal.reset();
+  gRetractModal.reset();
+
   // absolute coordinates and feed per min
-  writeBlock(gFormat.format(90), gFormat.format(94));
-  writeBlock(gFormat.format(17));
-  writeBlock(gFormat.format(71));
+  writeBlock(gAbsIncModal.format(90), gFeedModeModal.format(94));
+  writeBlock(gPlaneModal.format(17));
+  writeBlock(gUnitModal.format(71));
   writeComment("Set initial feed rate to 50 mm/min ");
-  writeBlock(gFormat.format(1), feedOutput.format(50));														
+  writeBlock(gMotionModal.format(1), feedOutput.format(50));														
 
   switch (unit) {
   case IN:
@@ -452,9 +462,13 @@ function getWorkPlaneMachineABC(workPlane) {
 function onSection() {
   var insertToolCall = isFirstSection() ||
     currentSection.getForceToolChange && currentSection.getForceToolChange() ||
-    (tool.number != getPreviousSection().getTool().number);
+    (tool.number != getPreviousSection().getTool().number) ||
+    properties.makeSubprograms && !(properties.groupByTool);
   
-  if (properties.makeSubprograms) {
+  //Determies if the current section should be put into a new file or appended to the current one
+  var newFile = properties.makeSubprograms && insertToolCall;
+
+  if (newFile) {
     var programId;
     try {
       programId = getAsInt(programName);
@@ -475,8 +489,9 @@ function onSection() {
     writeln("%");
 
     var oFormat = createFormat({ width: (properties.o8 ? 8 : 4), zeropad: true, decimals: 0 });
-    writeln("O" + oFormat.format(subprogram));
-
+    //writeln("O" + oFormat.format(subprogram));
+    writeComment(subprogram);
+    writeln("");
 
     writeHeader();
 
@@ -571,7 +586,7 @@ function onSection() {
       isFirstSection() ||
       (rpmFormat.areDifferent(tool.spindleRPM, sOutput.getCurrent())) ||
       (tool.clockwise != getPreviousSection().getTool().clockwise) ||
-      properties.makeSubprograms) {
+      newFile) {
     if (tool.spindleRPM < 1) {
       error(localize("Spindle speed out of range."));
       return;
@@ -1026,19 +1041,33 @@ function onCommand(command) {
 
 function onSectionEnd() {
   writeBlock(gPlaneModal.format(17));
-  if (((getCurrentSectionId() + 1) >= getNumberOfSections()) ||
-      (tool.number != getNextSection().getTool().number)) {
+
+  var lastOrToolChange = ((getCurrentSectionId() + 1) >= getNumberOfSections()) ||
+    (tool.number != getNextSection().getTool().number);
+  /*
+  writeComment("current section: " + getCurrentSectionId());
+  writeComment("number of sections: " + getNumberOfSections());
+  writeComment("tool number: " + tool.number);
+  
+  if (!((getCurrentSectionId() + 1) >= getNumberOfSections())) {
+    writeComment("next tool: " + getNextSection().getTool().number);
+  }
+  */
+  if (lastOrToolChange) {
     onCommand(COMMAND_BREAK_CONTROL);
   }
   if (isRedirecting()) {
-    writeFooter();
-    if (properties.useFilesForSubprograms) {
-      writeln("%");
+    if (properties.makeSubprograms && !(properties.groupByTool) ||
+      properties.makeSubprograms && properties.groupByTool &&
+      lastOrToolChange) {
+      writeFooter();
+      //writeln("%");
+      subprograms += getRedirectionBuffer();
+      closeRedirection();
+      sequenceNumber = previousSequenceNumber;
     }
-    subprograms += getRedirectionBuffer();
-    closeRedirection();
-    sequenceNumber = previousSequenceNumber;
   }
+
   forceAny();
 }
 
