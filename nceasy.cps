@@ -484,11 +484,12 @@ function onSection() {
     previousSequenceNumber = sequenceNumber;
     sequenceNumber = properties.sequenceNumberStart;
 
+    // Create new File
     var path = FileSystem.getCombinedPath(FileSystem.getFolderPath(getOutputPath()), subprogram + "." + extension);
-    redirectToFile(path);
+    redirectToFile(path);   //Text is output into the new file from this point
     writeln("%");
 
-    var oFormat = createFormat({ width: (properties.o8 ? 8 : 4), zeropad: true, decimals: 0 });
+    var oFormat = createFormat({ width: (properties.o8 ? 8 : 4), zeropad: true, decimals: 0 });   //no idea what this is for
     //writeln("O" + oFormat.format(subprogram));
     writeComment(subprogram);
     writeln("");
@@ -1048,7 +1049,6 @@ function onSectionEnd() {
   writeComment("current section: " + getCurrentSectionId());
   writeComment("number of sections: " + getNumberOfSections());
   writeComment("tool number: " + tool.number);
-  
   if (!((getCurrentSectionId() + 1) >= getNumberOfSections())) {
     writeComment("next tool: " + getNextSection().getTool().number);
   }
@@ -1057,17 +1057,14 @@ function onSectionEnd() {
     onCommand(COMMAND_BREAK_CONTROL);
   }
   if (isRedirecting()) {
-    if (properties.makeSubprograms && !(properties.groupByTool) ||
-      properties.makeSubprograms && properties.groupByTool &&
-      lastOrToolChange) {
+    if (!(properties.groupByTool) ||              //check if this is the End of the current file
+      properties.groupByTool && lastOrToolChange) {
       writeFooter();
-      //writeln("%");
-      subprograms += getRedirectionBuffer();
-      closeRedirection();
+      subprograms += getRedirectionBuffer();      //not sure this if this is needed
+      closeRedirection();                         //Back to main file
       sequenceNumber = previousSequenceNumber;
     }
   }
-
   forceAny();
 }
 
