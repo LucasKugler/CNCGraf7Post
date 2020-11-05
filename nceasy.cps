@@ -49,7 +49,8 @@ properties = {
   optionalStop: true, // optional stop
   separateWordsWithSpace: true, // specifies that the words should be separated with a white space
   homingZ: 30, // specify the z homing position
-  makeSubprograms: true // specifies that one file should be generated for each section
+  makeSubprograms: true, // specifies that one file should be generated for each section
+  groupByTool: true // A new file is generated at every tool change
 };
 
 // user-defined property definitions
@@ -63,7 +64,8 @@ propertyDefinitions = {
   optionalStop: {title:"Optional stop", description:"Outputs optional stop code during when necessary in the code.", type:"boolean"},
   separateWordsWithSpace: {title:"Separate words with space", description:"Adds spaces between words if 'yes' is selected.", type:"boolean"},
   homingZ: {title:"Homing Z", description: "Z position for homing in workspice coordinates, specified in NC EAS(Y).", type: "integer"},
-  makeSubprograms: {title:"Use separate files for each section", description:"Specifies that one file should be generated for each section.", type:"boolean"}
+  makeSubprograms: {title:"Use separate files for each section", description:"Specifies that one file should be generated for each section.", type:"boolean"},
+  groupByTool: {title:"New file only at tool changes", description:"A new file is generated every time there is a tool change.", type:"boolean"}
 };
 
 var numberOfToolSlots = 9999;
@@ -454,7 +456,10 @@ function onSection() {
     currentSection.getForceToolChange && currentSection.getForceToolChange() ||
     (tool.number != getPreviousSection().getTool().number);
   
-  if (properties.makeSubprograms) {
+  var newFile = properties.makeSubprograms && !(properties.groupByTool) ||
+              properties.makeSubprograms && properties.groupByTool && insertToolCall;
+
+  if (newFile) {
     var programId;
     try {
       programId = getAsInt(programName);
@@ -571,7 +576,7 @@ function onSection() {
       isFirstSection() ||
       (rpmFormat.areDifferent(tool.spindleRPM, sOutput.getCurrent())) ||
       (tool.clockwise != getPreviousSection().getTool().clockwise) ||
-      properties.makeSubprograms) {
+      newFile) {
     if (tool.spindleRPM < 1) {
       error(localize("Spindle speed out of range."));
       return;
@@ -1026,19 +1031,33 @@ function onCommand(command) {
 
 function onSectionEnd() {
   writeBlock(gPlaneModal.format(17));
-  if (((getCurrentSectionId() + 1) >= getNumberOfSections()) ||
-      (tool.number != getNextSection().getTool().number)) {
+
+  var lastOrToolChange = ((getCurrentSectionId() + 1) >= getNumberOfSections()) ||
+    (tool.number != getNextSection().getTool().number);
+  
+  writeComment("current section: " + getCurrentSectionId());
+  writeComment("number of sections: " + getNumberOfSections());
+  writeComment("tool number: " + tool.number);
+  
+  if (!((getCurrentSectionId() + 1) >= getNumberOfSections())) {
+    writeComment("next tool: " + getNextSection().getTool().number);
+  }
+  
+  if (lastOrToolChange) {
     onCommand(COMMAND_BREAK_CONTROL);
   }
   if (isRedirecting()) {
-    writeFooter();
-    if (properties.useFilesForSubprograms) {
+    if (properties.makeSubprograms && !(properties.groupByTool) ||
+      properties.makeSubprograms && properties.groupByTool &&
+      lastOrToolChange) {
+      writeFooter();
       writeln("%");
+      subprograms += getRedirectionBuffer();
+      closeRedirection();
     }
-    subprograms += getRedirectionBuffer();
-    closeRedirection();
-    sequenceNumber = previousSequenceNumber;
   }
+  sequenceNumber = previousSequenceNumber;
+
   forceAny();
 }
 
