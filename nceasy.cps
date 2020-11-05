@@ -1107,6 +1107,12 @@ function onClose() {
   writeln("%");
 }
 
+function onTerminate() {
+  if (properties.makeSubprograms) {
+    FileSystem.remove(getOutputPath()); //Delete the unecessary main file
+  }
+}
+
 function writeFooter() {
   onCommand(COMMAND_COOLANT_OFF);
 
