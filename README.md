@@ -5,6 +5,8 @@ The NC-EASY post processor gives 2 options to split the g-code into multiple fil
 
 **This new functionnality has not been tested extensively yet. Use with caution, and check the code before running it on your machine!**
 
+(Note that the CNCGraf7 post is not actually included on this repository)
+
 ## Parameters
 - *makeSubprograms* : set to *true* to activate multiple output. Default is one file per operation.
 
