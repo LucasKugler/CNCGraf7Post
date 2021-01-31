@@ -12,31 +12,6 @@ The NC-EASY post processor gives 2 options to split the g-code into multiple fil
 
  - *groupByTool* : set to true to generate new file every time there is a tool change (only active if *makeSubprograms* is also active).
 
-## Tested 
-### 2D
-* Adaptive clearing
-* Pocket
-* Face
-* Contour
-* Bore
-### 3D
-* Adaptive clearing
-* Pocket clearing
-* Parallel
-* Contour
-* Horizontal
-* Scallop
-* Spiral
-* Morphed spiral
-### Drilling
-* Drilling - rapid out
-* Chip breaking
-* Deep drilling
-* Break through
-* 
-### Multi-Axis
-### Turning
-
 ## Disclaimer
 
 This software is provided **AS IS**, **always** simluate the generated g-code prior use on a real mill!  
